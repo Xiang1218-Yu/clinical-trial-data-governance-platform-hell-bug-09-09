@@ -2,6 +2,7 @@ import type {
   AdverseEvent, DataBatch, DataQuery, EventAudit, EventTimelineEntry, ExportAttempt,
   ExportJob, OutboxMessage, QualityFinding, ReviewTask, SignalDefinition, Site, Study, Subject,
 } from './domain.js';
+import { eventFingerprint } from './identity.js';
 
 const now = new Date('2026-10-06T08:00:00Z');
 const iso = (value: string) => new Date(value).toISOString();
@@ -28,12 +29,14 @@ export const subjects: Subject[] = [
   { id: 'sub-005', studyId: 'st-103', siteId: 'site-os', subjectNo: 'OS-0144', status: 'ACTIVE', nextVisit: '2026-10-10', completion: 83, queryCount: 0, consentVersion: '6.0', screeningDate: '2026-02-11' },
 ];
 
-export const adverseEvents: AdverseEvent[] = [
-  { id: 'ae-1001', studyId: 'st-101', subjectId: 'sub-002', term: 'Neutropenia', severity: 'SEVERE', status: 'MEDICAL_REVIEW', onsetDate: '2026-09-28', receivedAt: '2026-09-29T08:20:00Z', causality: 'Possible', seriousness: true, source: 'EDC', sourceRecordId: 'EDC-SH-0088-AE-0001', fingerprint: 'st-101|sub-002|edc-sh-0088-ae-0001', version: 3, lastModifiedAt: iso('2026-10-03T10:00:00Z'), lastModifiedBy: 'system-reconciliation' },
-  { id: 'ae-1002', studyId: 'st-101', subjectId: 'sub-001', term: 'Fatigue', severity: 'MODERATE', status: 'OPEN', onsetDate: '2026-10-01', receivedAt: '2026-10-02T10:12:00Z', causality: 'Unlikely', seriousness: false, source: 'EDC', sourceRecordId: 'EDC-NY-0042-AE-0002', fingerprint: 'st-101|sub-001|edc-ny-0042-ae-0002', version: 1, lastModifiedAt: iso('2026-10-02T10:12:00Z'), lastModifiedBy: 'site-ny' },
-  { id: 'ae-1003', studyId: 'st-102', subjectId: 'sub-004', term: 'Dizziness', severity: 'MILD', status: 'CONFIRMED', onsetDate: '2026-09-18', receivedAt: '2026-09-19T11:00:00Z', causality: 'Possible', seriousness: false, source: 'EDC', sourceRecordId: 'EDC-SF-0016-AE-0001', fingerprint: 'st-102|sub-004|edc-sf-0016-ae-0001', version: 2, lastModifiedAt: iso('2026-09-21T12:00:00Z'), lastModifiedBy: 'medical-reviewer' },
-  { id: 'ae-1004', studyId: 'st-103', subjectId: 'sub-005', term: 'Bronchospasm', severity: 'LIFE_THREATENING', status: 'REPORTED', onsetDate: '2026-09-30', receivedAt: '2026-10-01T15:42:00Z', causality: 'Probable', seriousness: true, source: 'Safety DB', sourceRecordId: 'SAFETY-OS-0144-0001', fingerprint: 'st-103|sub-005|safety-os-0144-0001', version: 4, lastModifiedAt: iso('2026-10-01T16:00:00Z'), lastModifiedBy: 'safety-gateway' },
+const seedEvents: AdverseEvent[] = [
+  { id: 'ae-1001', studyId: 'st-101', subjectId: 'sub-002', term: 'Neutropenia', severity: 'SEVERE', status: 'MEDICAL_REVIEW', onsetDate: '2026-09-28', receivedAt: '2026-09-29T08:20:00Z', causality: 'Possible', seriousness: true, source: 'EDC', sourceRecordId: 'EDC-SH-0088-AE-0001', version: 3, lastModifiedAt: iso('2026-10-03T10:00:00Z'), lastModifiedBy: 'system-reconciliation' },
+  { id: 'ae-1002', studyId: 'st-101', subjectId: 'sub-001', term: 'Fatigue', severity: 'MODERATE', status: 'OPEN', onsetDate: '2026-10-01', receivedAt: '2026-10-02T10:12:00Z', causality: 'Unlikely', seriousness: false, source: 'EDC', sourceRecordId: 'EDC-NY-0042-AE-0002', version: 1, lastModifiedAt: iso('2026-10-02T10:12:00Z'), lastModifiedBy: 'site-ny' },
+  { id: 'ae-1003', studyId: 'st-102', subjectId: 'sub-004', term: 'Dizziness', severity: 'MILD', status: 'CONFIRMED', onsetDate: '2026-09-18', receivedAt: '2026-09-19T11:00:00Z', causality: 'Possible', seriousness: false, source: 'EDC', sourceRecordId: 'EDC-SF-0016-AE-0001', version: 2, lastModifiedAt: iso('2026-09-21T12:00:00Z'), lastModifiedBy: 'medical-reviewer' },
+  { id: 'ae-1004', studyId: 'st-103', subjectId: 'sub-005', term: 'Bronchospasm', severity: 'LIFE_THREATENING', status: 'REPORTED', onsetDate: '2026-09-30', receivedAt: '2026-10-01T15:42:00Z', causality: 'Probable', seriousness: true, source: 'Safety DB', sourceRecordId: 'SAFETY-OS-0144-0001', version: 4, lastModifiedAt: iso('2026-10-01T16:00:00Z'), lastModifiedBy: 'safety-gateway' },
 ];
+
+export const adverseEvents: AdverseEvent[] = seedEvents.map((event) => ({ ...event, fingerprint: eventFingerprint(event) }));
 
 export const queries: DataQuery[] = [
   { id: 'dq-201', studyId: 'st-101', subjectId: 'sub-002', domain: 'LB', field: 'LBORRESU', message: 'Unit is missing for absolute neutrophil count.', status: 'OPEN', priority: 'HIGH', createdAt: '2026-10-02T09:10:00Z', dueAt: '2026-10-08T23:59:59Z' },

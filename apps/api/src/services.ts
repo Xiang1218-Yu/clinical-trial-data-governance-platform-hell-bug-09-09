@@ -1,4 +1,5 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
+import { eventFingerprint, normalize } from './identity.js';
 import {
   adverseEvents, auditEntries, dataBatches, eventTimeline, exportAttempts, exports, outboxMessages,
   qualityFindings, queries, reviewTasks, signalDefinitions, sites, studies, subjects,
@@ -26,7 +27,6 @@ export class DomainConflictError extends Error {
 
 function now() { return new Date().toISOString(); }
 function clone<T>(value: T): T { return structuredClone(value); }
-function normalize(value: string) { return value.trim().toLocaleLowerCase('en-US').replace(/\s+/g, ' '); }
 function studyFor(studyId: string) {
   const study = studies.find((item) => item.id === studyId);
   if (!study) throw new DomainConflictError('study not found', { studyId });
@@ -36,24 +36,6 @@ function eventFor(eventId: string) {
   const event = adverseEvents.find((item) => item.id === eventId);
   if (!event) throw new DomainConflictError('event not found', { eventId });
   return event;
-}
-function eventFingerprint(input: { studyId: string; subjectId: string; source?: string; sourceRecordId?: string; term: string; onsetDate?: string }) {
-  const sourceRecord = normalize(input.sourceRecordId ?? '');
-  const sourceSystem = normalize(input.source ?? 'unknown');
-  const normalizedStudy = normalize(input.studyId);
-  const subject = normalize(input.subjectId);
-  const term = normalize(input.term);
-  const onset = input.onsetDate ?? 'unknown';
-  const normalizedOnset = normalize(onset);
-  const identity = sourceRecord
-    ? [normalizedStudy, subject, sourceRecord].join('|')
-    : [normalizedStudy, subject, term, normalizedOnset].join('|');
-  const canonical = identity.replace(/\|+/g, '|');
-  const digest = createHash('sha256').update(canonical).digest('hex');
-  if (sourceSystem === 'safety db') {
-    return createHash('sha256').update(`${digest}|safety`).digest('hex');
-  }
-  return digest;
 }
 
 function appendAudit(event: AdverseEvent, action: EventAudit['action'], actor: string) {
@@ -141,15 +123,16 @@ export function createEvent(input: Pick<AdverseEvent, 'studyId' | 'subjectId' | 
   studyFor(input.studyId);
   const subject = subjects.find((item) => item.id === input.subjectId && item.studyId === input.studyId);
   if (!subject) throw new DomainConflictError('subject does not belong to study', { subjectId: input.subjectId, studyId: input.studyId });
-  const source = input.source ?? 'Manual entry';
-  const fingerprint = eventFingerprint({ ...input, source });
+  const source = input.source?.trim() || 'Manual entry';
+  const sourceRecordId = input.sourceRecordId?.trim() || undefined;
+  const fingerprint = eventFingerprint({ ...input, source, sourceRecordId });
   const existing = adverseEvents.find((item) => item.fingerprint === fingerprint);
   if (existing) return clone(existing);
   const timestamp = input.receivedAt ?? now();
-  const event: AdverseEvent = { id: `ae-${randomUUID().slice(0, 8)}`, studyId: input.studyId, subjectId: input.subjectId, term: input.term.trim(), severity: input.severity, status: 'OPEN', onsetDate: input.onsetDate ?? timestamp.slice(0, 10), receivedAt: timestamp, causality: input.causality, seriousness: input.seriousness, source, sourceRecordId: input.sourceRecordId, fingerprint, version: 1, lastModifiedAt: timestamp, lastModifiedBy: input.actor ?? 'system' };
+  const event: AdverseEvent = { id: `ae-${randomUUID().slice(0, 8)}`, studyId: input.studyId, subjectId: input.subjectId, term: input.term.trim(), severity: input.severity, status: 'OPEN', onsetDate: input.onsetDate ?? timestamp.slice(0, 10), receivedAt: timestamp, causality: input.causality, seriousness: input.seriousness, source, sourceRecordId, fingerprint, version: 1, lastModifiedAt: timestamp, lastModifiedBy: input.actor ?? 'system' };
   adverseEvents.unshift(event);
   appendAudit(event, 'CREATED', input.actor ?? 'system');
-  appendTimeline(event, 'EVENT_CREATED', { source, sourceRecordId: input.sourceRecordId ?? null });
+  appendTimeline(event, 'EVENT_CREATED', { source, sourceRecordId: sourceRecordId ?? null });
   appendOutbox(event.id, 'ADVERSE_EVENT', 'ADVERSE_EVENT_CREATED', event.version, { event: clone(event) });
   if (event.seriousness || event.severity === 'LIFE_THREATENING') reviewTasks.unshift({ id: `review-${randomUUID().slice(0, 8)}`, studyId: event.studyId, eventId: event.id, queue: 'MEDICAL', status: 'UNASSIGNED', priority: event.severity === 'LIFE_THREATENING' ? 100 : 90, dueAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(), createdAt: timestamp });
   return clone(event);

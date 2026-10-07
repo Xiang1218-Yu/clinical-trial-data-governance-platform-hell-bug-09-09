@@ -32,6 +32,7 @@ npm run build
 ## 目录
 
 - `apps/api/src/domain.ts`：领域类型
+- `apps/api/src/identity.ts`：不良事件身份规范化与指纹
 - `apps/api/src/store.ts`：演示数据仓库
 - `apps/api/src/services.ts`：研究、事件和导出领域服务
 - `apps/api/src/server.ts`：Fastify HTTP API
