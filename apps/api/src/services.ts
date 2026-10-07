@@ -43,17 +43,17 @@ function eventFingerprint(input: { studyId: string; subjectId: string; source?: 
   const normalizedStudy = normalize(input.studyId);
   const subject = normalize(input.subjectId);
   const term = normalize(input.term);
-  const onset = input.onsetDate ?? 'unknown';
+  const onset = input.onsetDate?.trim() ? input.onsetDate : 'unknown';
   const normalizedOnset = normalize(onset);
   const identity = sourceRecord
-    ? [normalizedStudy, subject, sourceRecord].join('|')
+    ? [normalizedStudy, subject, sourceSystem, sourceRecord].join('|')
     : [normalizedStudy, subject, term, normalizedOnset].join('|');
   const canonical = identity.replace(/\|+/g, '|');
-  const digest = createHash('sha256').update(canonical).digest('hex');
-  if (sourceSystem === 'safety db') {
-    return createHash('sha256').update(`${digest}|safety`).digest('hex');
-  }
-  return digest;
+  return createHash('sha256').update(canonical).digest('hex');
+}
+
+function storedEventFingerprint(event: AdverseEvent) {
+  return eventFingerprint({ studyId: event.studyId, subjectId: event.subjectId, source: event.source, sourceRecordId: event.sourceRecordId, term: event.term, onsetDate: event.onsetDate });
 }
 
 function appendAudit(event: AdverseEvent, action: EventAudit['action'], actor: string) {
@@ -141,12 +141,13 @@ export function createEvent(input: Pick<AdverseEvent, 'studyId' | 'subjectId' | 
   studyFor(input.studyId);
   const subject = subjects.find((item) => item.id === input.subjectId && item.studyId === input.studyId);
   if (!subject) throw new DomainConflictError('subject does not belong to study', { subjectId: input.subjectId, studyId: input.studyId });
-  const source = input.source ?? 'Manual entry';
-  const fingerprint = eventFingerprint({ ...input, source });
-  const existing = adverseEvents.find((item) => item.fingerprint === fingerprint);
-  if (existing) return clone(existing);
   const timestamp = input.receivedAt ?? now();
-  const event: AdverseEvent = { id: `ae-${randomUUID().slice(0, 8)}`, studyId: input.studyId, subjectId: input.subjectId, term: input.term.trim(), severity: input.severity, status: 'OPEN', onsetDate: input.onsetDate ?? timestamp.slice(0, 10), receivedAt: timestamp, causality: input.causality, seriousness: input.seriousness, source, sourceRecordId: input.sourceRecordId, fingerprint, version: 1, lastModifiedAt: timestamp, lastModifiedBy: input.actor ?? 'system' };
+  const source = input.source ?? 'Manual entry';
+  const onsetDate = input.onsetDate?.trim() ? input.onsetDate : timestamp.slice(0, 10);
+  const fingerprint = eventFingerprint({ studyId: input.studyId, subjectId: input.subjectId, source, sourceRecordId: input.sourceRecordId, term: input.term, onsetDate });
+  const existing = adverseEvents.find((item) => storedEventFingerprint(item) === fingerprint);
+  if (existing) return clone(existing);
+  const event: AdverseEvent = { id: `ae-${randomUUID().slice(0, 8)}`, studyId: input.studyId, subjectId: input.subjectId, term: input.term.trim(), severity: input.severity, status: 'OPEN', onsetDate, receivedAt: timestamp, causality: input.causality, seriousness: input.seriousness, source, sourceRecordId: input.sourceRecordId, fingerprint, version: 1, lastModifiedAt: timestamp, lastModifiedBy: input.actor ?? 'system' };
   adverseEvents.unshift(event);
   appendAudit(event, 'CREATED', input.actor ?? 'system');
   appendTimeline(event, 'EVENT_CREATED', { source, sourceRecordId: input.sourceRecordId ?? null });
